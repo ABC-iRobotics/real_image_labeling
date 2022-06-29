@@ -1,4 +1,6 @@
+from enum import unique
 import string
+from matplotlib import colors
 from yaml import Loader 
 from yaml import load as load_yaml
 import numpy as np
@@ -249,6 +251,8 @@ def project_3d_to_2d(points_3d, frame_transform, cam_mtx, dist):
 
 def get_object_pose_in_camera(object_pose_in_base, tcp_pose_in_base, camera_pose_in_tcp):
     '''
+        Get object pose in camera frame.
+
         arguments:
             - object_pose_in_base: [x,y,z,rx,ry,rz] xyz in meters, rx, ry, rz in Euler angles (radians)
             - tcp_pose_in_base: [x,y,z,rx,ry,rz] xyz in meters, rx, ry, rz in rotation vector
@@ -261,30 +265,22 @@ def get_object_pose_in_camera(object_pose_in_base, tcp_pose_in_base, camera_pose
     tcp_pose = tcp_pose_in_base
 
     object_xyz = list(map(lambda x: x*1000, object_pose[0:3]))
-    # object_xyz.extend(Rotation.from_rotvec(np.array(object_pose[3:])).as_euler("xyz"))
-    # object_xyz.extend([0,0,pi/2])
     object_xyz.extend(object_pose[3:])
 
     tcp_xyz = list(map(lambda x: x*1000, tcp_pose[0:3]))
     tcp_xyz.extend(Rotation.from_rotvec(np.array(tcp_pose[3:])).as_euler("xyz"))
 
-    # print("object_pose: ", object_xyz)
-    # print("tcp_pose: ", tcp_xyz)
-
     object_pose = object_xyz
     tcp_pose = tcp_xyz
-    # camera_in_tcp = transforms3d.affines.compose([0.6, -42.6, 137.4], [[-0.9998, 0.0174, 0.0087],[-0.0175, -0.9998, -0.0091],[0.0085, -0.0092, 0.9999]], [1,1,1])
     camera_in_tcp = camera_pose_in_tcp
 
     object_to_base_transform = transforms3d.affines.compose(object_pose[0:3], transforms3d.euler.euler2mat(*object_pose[3:], axes='sxyz'), [1, 1, 1])
     tcp_to_base_transform = transforms3d.affines.compose(tcp_pose[0:3], transforms3d.euler.euler2mat(*tcp_pose[3:], axes='sxyz'), [1, 1, 1])
 
-    # print("object_in TCP: ", np.dot(np.linalg.inv(np.array(tcp_to_base_transform)), np.array(object_to_base_transform)))
     object_in_camera = np.dot(np.linalg.inv(camera_in_tcp), np.dot(np.linalg.inv(np.array(tcp_to_base_transform)), np.array(object_to_base_transform)))
     object_in_camera_translation = list(transforms3d.affines.decompose44(object_in_camera)[0])
     object_in_camera_rotation = transforms3d.euler.mat2euler(transforms3d.affines.decompose44(object_in_camera)[1])
-    # print("object_in_camera_translation: ", object_in_camera_translation)
-
+    
     object_in_camera_pose = object_in_camera_translation
     object_in_camera_pose.extend(object_in_camera_rotation)
 
@@ -304,29 +300,37 @@ def vector_to_homogeneous(vector):
     homogeneous_matrix = np.round(homogeneous_matrix,15)
     return homogeneous_matrix
 
-def get_unique_colors(count):
-    colors = []
-    cnt = ceil(count**(1/3))
-    increment = int((255-30)/cnt)
+def get_unique_colors(count, limit=0):
+    '''
+        Get unique colors for masks.
 
-    for red in range(cnt):
-        for blue in range(cnt):
-            for green in range(cnt):
-                colors.append([(red+1)*increment, (green+1)*increment, (blue+1)*increment])
+        arguments:
+            - count (int): number of required unique colors
+        returns:
+            - colors: list of HSV colors
+    '''
+    colors = []
+    increment = int((255-limit)/count)
+
+    for v in range(count):
+        colors.append(v*increment+limit)
+
     return colors
 
+# Define argument parser
 parser = argparse.ArgumentParser(description='Generate segmentation masks from 3D models and camera object poses')
 parser.add_argument('-p', '--project', type=str, dest='project', help='Name of project', required=True)
 parser.add_argument('--organize', dest='organize', action='store_true', default=False, help='Organize dataset')
 args = parser.parse_args()
 
 if __name__=='__main__':
-    # Open configuration file
+    # Make directory
     PROJECT_FOLDER  = 'projects'
     OUTPUT_FOLDER = 'annotations'
     project = args.project
     os.makedirs(os.path.join(PROJECT_FOLDER, project, OUTPUT_FOLDER), exist_ok=True)
 
+    # Open configuration file
     try:
         with open(os.path.join(PROJECT_FOLDER, project, 'config.yaml'), 'r') as f:
             configs = load_yaml(f, Loader=Loader)
@@ -342,7 +346,7 @@ if __name__=='__main__':
     camera_in_tcp_translation = configs['camera_in_tcp_translation']
     camera_in_tcp_rotation = configs['camera_in_tcp_rotation']
 
-    # load the .csv file
+    # Load the .csv file
     try:
         tcp_photo_poses = np.genfromtxt(os.path.join(PROJECT_FOLDER, project, robot_tcp_poses_csv), delimiter=',')
     except FileNotFoundError as e:
@@ -351,41 +355,54 @@ if __name__=='__main__':
 
     camera_in_tcp_translation = np.zeros(3)
     camera_in_tcp_rotation = np.identity(3)
-
     camera_in_tcp = transforms3d.affines.compose(camera_in_tcp_translation, camera_in_tcp_rotation, [1,1,1])
 
     mesh_paths = []
-    possible_colors = get_unique_colors(len(objects))
     object_poses_in_camera = []
+    possible_colors = []
 
-    # optimized parameters
-    # mod = [0.36950622, 1.76055789, 1.14203609, 0.0301289, 0.0345789, 0.09512124, 0.83294189, 0.56311219, 0.5694011, 0.70014039, 0.92468405]
-    # mod = [0.04702647, 0.94011249, 2.70947104, -0.13728195, -0.12650722, 0.6799471, 0.59468661, 0.08696328, 0.48189899, 0.23992713]
-    # Logos and screws
-    # mod = [ -0.79919433, 1.34885504, -23.6054341, -0.4340958, -1.31660975, 0.9626113, -9.69735669, 1.61055038, -5.42800977, 2.14477543]
-
-    # mod_cam_in_TCP_frame = vector_to_homogeneous(np.append(np.array(mod[0:3]), np.array(mod[3:6])/100))
-    # mod_cam_mat = np.array([[mod[6], 0, mod[7]], [0, mod[8], mod[9]], [0,0,0]])
-    # cam.cam_mtx = cam.cam_mtx + mod_cam_mat
-    # print("cam_mtx", cam.cam_mtx)
-    # camera_in_tcp = np.dot(mod_cam_in_TCP_frame, camera_in_tcp)
-    # print("camera_in_tcp", camera_in_tcp)
-
-    for img_cnt in range(2):#len(tcp_photo_poses) / 2
-        print(len(tcp_photo_poses)-1, "/", img_cnt)
+    for img_cnt in range(len(tcp_photo_poses)):
+        print(img_cnt, "/", len(tcp_photo_poses)-1)
         tcp_photo_pose = tcp_photo_poses[img_cnt]
+
+        # Convert quaternion to rotation vector
         axis, angle = transforms3d.quaternions.quat2axangle(np.array([tcp_photo_pose[6],tcp_photo_pose[3],tcp_photo_pose[4],tcp_photo_pose[5]])) # w,x,y,z!!!
         rotvec = axis*angle
         trans = tcp_photo_pose[0:3]
 
+        unique_objects = []
+        object_instances = []
         for object in objects:
+            if object["stl_file"] not in unique_objects:
+                unique_objects.append(object["stl_file"])
+                object_instances.append(1)
+            else:
+                object_instances[unique_objects.index(object["stl_file"])] += 1
             object_poses_in_camera.append(get_object_pose_in_camera(object["pose"], np.append(trans,rotvec), camera_in_tcp))
             mesh_paths.append(os.path.join(PROJECT_FOLDER, project, object["stl_file"]))
 
+        saturations = []
+        for number_of_instances in object_instances:
+            saturations.append(get_unique_colors(number_of_instances,limit=100))
+
+        hues = get_unique_colors(len(unique_objects))
+        instance_indices = np.zeros(np.array(unique_objects).shape).astype(np.uint32)
+        for mesh_path in mesh_paths:
+            index = unique_objects.index(os.path.split(mesh_path)[1])
+            hue = hues[index]
+            saturation_index = instance_indices[index]
+            saturation = saturations[index][saturation_index]
+            rgb = list(cv2.cvtColor(np.array([[[hue,saturation,255]]]).astype(np.uint8), cv2.COLOR_HSV2RGB)[0][0])
+            possible_colors.append(rgb)
+            instance_indices[index] += 1
+
+        # Generate masks
         mask_final = draw_meshes(mesh_paths, possible_colors, object_poses_in_camera, cam_mtx, dist, os.path.join(PROJECT_FOLDER, project, OUTPUT_FOLDER))
 
         object_poses_in_camera = []
         mesh_paths = []
+
+    # Organize the generated masks, training and validation data    
     if args.organize:
         try:
             organize_data(os.path.join(PROJECT_FOLDER, project, OUTPUT_FOLDER))
