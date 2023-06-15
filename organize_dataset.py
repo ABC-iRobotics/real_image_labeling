@@ -25,7 +25,7 @@ def organize_data(annotation_path):
             img = cv2.imread(os.path.join(annotation_path, '..', IMAGE_FOLDER, annotation_file.replace('_annotation', '')), cv2.IMREAD_ANYCOLOR)
             mask = cv2.imread(os.path.join(annotation_path, annotation_file), cv2.IMREAD_ANYCOLOR)
 
-            overlay = img + np.array(mask)*0.3
+            overlay = img + np.array(mask)*0.4
 
             cv2.imwrite(os.path.join(annotation_path, '..', DATASET_FOLDER, annotation_file.replace('_annotation', '_overlay')), overlay)
             
