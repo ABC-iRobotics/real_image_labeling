@@ -302,10 +302,11 @@ def vector_to_homogeneous(vector):
 
 def get_unique_colors(count, limit=0):
     '''
-        Get unique colors for masks.
+        Get unique HSV colors for masks. The hue value is the same for each class
 
         arguments:
-            - count (int): number of required unique colors
+            - count (int): number of classes
+            - limit (int): minimum saturation value
         returns:
             - colors: list of HSV colors
     '''
@@ -353,8 +354,8 @@ if __name__=='__main__':
         logging.error(e)
         sys.exit(1)
 
-    camera_in_tcp_translation = np.zeros(3)
-    camera_in_tcp_rotation = np.identity(3)
+    # camera_in_tcp_translation = np.zeros(3)
+    # camera_in_tcp_rotation = np.identity(3)
     camera_in_tcp = transforms3d.affines.compose(camera_in_tcp_translation, camera_in_tcp_rotation, [1,1,1])
 
     mesh_paths = []
@@ -362,7 +363,7 @@ if __name__=='__main__':
     possible_colors = []
 
     for img_cnt in range(len(tcp_photo_poses)):
-        print(img_cnt, "/", len(tcp_photo_poses)-1)
+        print(img_cnt+1, "/", len(tcp_photo_poses))
         tcp_photo_pose = tcp_photo_poses[img_cnt]
 
         # Convert quaternion to rotation vector
