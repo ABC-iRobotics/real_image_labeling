@@ -1,4 +1,4 @@
 projects/*/dataset
 projects/*/images
 projects/*/annotations
-__pycache__/*
+__pycache__/
