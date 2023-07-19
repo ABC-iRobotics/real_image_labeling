@@ -85,7 +85,7 @@ class BarkSlidebot:
         pose_goal.orientation = geometry_msgs.msg.Quaternion(*rot)
 
         waypoints = []
-        waypoints.append(self.group.get_current_pose().pose)
+        # waypoints.append(self.group.get_current_pose().pose)  # Don't put the start point to waypoints!
         waypoints.append(copy.deepcopy(pose_goal))
 
         (plan_trajectory, fraction) = self.group.compute_cartesian_path(
